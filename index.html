@@ -78,8 +78,8 @@ select:focus,input:focus{border-color:var(--green)}
 .btn:hover{border-color:var(--green);color:var(--ink)}
 .btn.on{background:var(--green-d);border-color:var(--green);color:var(--green)}
 
-.tablewrap{background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--shadow)}
-table{width:100%;border-collapse:collapse;font-size:13px}
+.tablewrap{background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:auto;box-shadow:var(--shadow)}
+table{width:100%;min-width:1580px;border-collapse:collapse;font-size:13px}
 thead th{text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);padding:13px 14px;border-bottom:1px solid var(--line);background:var(--bg2);cursor:pointer;user-select:none;white-space:nowrap}
 thead th:hover{color:var(--ink)}
 thead th .ar{opacity:.4;font-size:9px}
@@ -93,8 +93,8 @@ td{padding:12px 14px;vertical-align:top}
 .typ{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em}
 .tierchip{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:7px;white-space:nowrap;border:1px solid var(--c);color:var(--c);background:color-mix(in srgb,var(--c) 12%,transparent)}
 .feats{display:flex;flex-wrap:wrap;gap:5px;max-width:340px}
-.reason{color:var(--ink2);font-size:12px;max-width:430px}
-.reason.clip{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+.reason{color:var(--ink2);font-size:12px;min-width:520px;max-width:760px;white-space:normal}
+.reason.clip{display:block;overflow:visible;cursor:default}
 .reason .none{color:var(--ink3);font-style:italic}
 .note{font-size:10.5px;color:var(--ink3);margin-top:4px;font-style:italic}
 .empty{padding:60px;text-align:center;color:var(--ink3);font-family:'IBM Plex Mono',monospace}
@@ -147,7 +147,8 @@ footer{margin-top:30px;font-size:11.5px;color:var(--ink3);font-family:'IBM Plex 
   <input type="text" id="q" placeholder="search account / owner / notes…">
   <select id="ftier"><option value="">All tiers</option></select>
   <select id="ffeat"><option value="">All features</option></select>
-  <select id="fowner"><option value="">All owners</option></select>
+  <select id="fowner"><option value="">All reps</option></select>
+  <select id="fstate"><option value="">All states</option></select>
   <button class="btn" id="reset">Reset</button>
  </div>
  <div class="tablewrap">
@@ -230,6 +231,8 @@ const allFeats=[...new Set(DEALS.flatMap(d=>d.statuses.map(s=>s.tag)))].sort();
 const fsel=document.getElementById('ffeat');allFeats.forEach(f=>fsel.add(new Option(f,f)));
 const owners=[...new Set(DEALS.map(d=>d.owner).filter(Boolean))].sort();
 const osel=document.getElementById('fowner');owners.forEach(o=>osel.add(new Option(o,o)));
+const states=[...new Set(DEALS.map(d=>d.account_state).filter(Boolean))].sort();
+const ssel=document.getElementById('fstate');states.forEach(s=>ssel.add(new Option(s,s)));
 
 // Table render + filter + sort
 let sortK='priority',sortDir=1;
@@ -241,10 +244,11 @@ function statusChips(d){
 }
 function render(){
  const q=document.getElementById('q').value.toLowerCase();
- const ft=document.getElementById('ftier').value, ff=document.getElementById('ffeat').value, fo=document.getElementById('fowner').value;
+ const ft=document.getElementById('ftier').value, ff=document.getElementById('ffeat').value, fo=document.getElementById('fowner').value, fs=document.getElementById('fstate').value;
  let rows=DEALS.filter(d=>{
   if(ft&&d.tier!=ft)return false;
   if(fo&&d.owner!=fo)return false;
+  if(fs&&(d.account_state||'')!=fs)return false;
   if(ff&&!d.statuses.some(s=>s.tag==ff))return false;
   if(q){const hay=(d.account+' '+d.opp+' '+d.owner+' '+(d.closed_lost_owner||'')+' '+(d.sf_account||'')+' '+(d.account_state||'')+' '+d.reason+' '+d.missing).toLowerCase();if(!hay.includes(q))return false;}
   return true;
@@ -252,7 +256,7 @@ function render(){
  rows.sort((a,b)=>{let x=a[sortK],y=b[sortK];if(typeof x=='string'){x=x||'';y=y||'';return x.localeCompare(y)*sortDir;}return((x||0)-(y||0))*sortDir;});
  tbody.innerHTML=rows.map(d=>{
   const c=TIERS[d.tier];
-  const reason=d.reason?`<div class="reason clip" onclick="this.classList.toggle('clip')">${d.reason.replace(/</g,'&lt;')}</div>`:'<div class="reason"><span class="none">— no note —</span></div>';
+  const reason=d.reason?`<div class="reason">${d.reason.replace(/</g,'&lt;')}</div>`:'<div class="reason"><span class="none">— no note —</span></div>';
   return `<tr>
    <td><div class="acct">${d.account||'—'} ${d.tagged?'':'<span class="tag-untag">notes</span>'}</div><div class="opp">${d.opp||''} · <span class="typ">${d.type||''}</span></div></td>
    <td class="owner">${d.owner||'—'}</td>
@@ -269,8 +273,8 @@ function render(){
  document.getElementById('filtstat').innerHTML=`${rows.length} deals · ${fmt(arr)} ARR`;
 }
 document.querySelectorAll('thead th[data-k]').forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(sortK==k)sortDir*=-1;else{sortK=k;sortDir=(k=='amount')?-1:1;}render();});
-['q','ftier','ffeat','fowner'].forEach(id=>document.getElementById(id).addEventListener('input',render));
-document.getElementById('reset').onclick=()=>{document.getElementById('q').value='';['ftier','ffeat','fowner'].forEach(id=>document.getElementById(id).value='');sortK='priority';sortDir=1;render();};
+['q','ftier','ffeat','fowner','fstate'].forEach(id=>document.getElementById(id).addEventListener('input',render));
+document.getElementById('reset').onclick=()=>{document.getElementById('q').value='';['ftier','ffeat','fowner','fstate'].forEach(id=>document.getElementById(id).value='');sortK='priority';sortDir=1;render();};
 document.querySelectorAll('.frow').forEach(r=>r.onclick=()=>{document.getElementById('ftier').value=r.dataset.tier;render();document.querySelector('.controls').scrollIntoView();});
 render();
 </script>

@@ -71,8 +71,8 @@ h1 .dim{color:var(--ink3)}
 .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;position:sticky;top:0;z-index:20;background:var(--bg);padding:14px 0 12px;border-bottom:1px solid var(--line)}
 .controls .ttl{font-family:'Bricolage Grotesque',sans-serif;font-size:18px;font-weight:600;margin-right:auto}
 .controls .ttl small{display:block;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink3);font-weight:400;letter-spacing:.04em}
-.xscroll{flex:0 0 100%;height:16px;overflow-x:auto;overflow-y:hidden;background:var(--bg2);border:1px solid var(--line);border-radius:8px}
-.xscroll div{height:1px}
+.xscroll{flex:0 0 100%;height:16px;background:var(--bg2);border:1px solid var(--line);border-radius:8px;position:relative;cursor:pointer;touch-action:none}
+.xscroll div{height:100%;min-width:44px;border-radius:8px;background:linear-gradient(90deg,var(--teal),var(--green));position:absolute;left:0;top:0;box-shadow:0 0 0 1px rgba(255,255,255,.08) inset}
 select,input[type=text]{background:var(--panel2);border:1px solid var(--line);color:var(--ink);font-family:'IBM Plex Mono',monospace;font-size:12px;padding:8px 11px;border-radius:9px;outline:none}
 input[type=text]{min-width:210px}
 select:focus,input:focus{border-color:var(--green)}
@@ -392,12 +392,39 @@ document.querySelectorAll('[data-tier-filter]').forEach(k=>k.onclick=()=>{
  render();document.querySelector('.controls').scrollIntoView();
 });
 const tablewrap=document.querySelector('.tablewrap'),xscroll=document.getElementById('xscroll'),xscrollInner=document.getElementById('xscrollInner');
-let syncScroll=false;
-function syncScrollWidth(){xscrollInner.style.width=tablewrap.scrollWidth+'px';}
-tablewrap.addEventListener('scroll',()=>{if(syncScroll)return;syncScroll=true;xscroll.scrollLeft=tablewrap.scrollLeft;syncScroll=false;});
-xscroll.addEventListener('scroll',()=>{if(syncScroll)return;syncScroll=true;tablewrap.scrollLeft=xscroll.scrollLeft;syncScroll=false;});
-window.addEventListener('resize',syncScrollWidth);
-syncScrollWidth();
+function updateXScroll(){
+ const maxScroll=Math.max(0,tablewrap.scrollWidth-tablewrap.clientWidth);
+ const track=xscroll.clientWidth;
+ const ratio=maxScroll?tablewrap.clientWidth/tablewrap.scrollWidth:1;
+ const thumbW=Math.max(44,Math.floor(track*ratio));
+ const maxLeft=Math.max(0,track-thumbW);
+ const left=maxScroll?Math.round((tablewrap.scrollLeft/maxScroll)*maxLeft):0;
+ xscrollInner.style.width=thumbW+'px';
+ xscrollInner.style.transform=`translateX(${left}px)`;
+ xscroll.style.display=maxScroll?'block':'none';
+}
+function setTableScrollFromTrack(clientX){
+ const rect=xscroll.getBoundingClientRect();
+ const thumbW=xscrollInner.offsetWidth;
+ const maxLeft=Math.max(0,xscroll.clientWidth-thumbW);
+ const maxScroll=Math.max(0,tablewrap.scrollWidth-tablewrap.clientWidth);
+ const left=Math.max(0,Math.min(maxLeft,clientX-rect.left-(thumbW/2)));
+ tablewrap.scrollLeft=maxLeft?(left/maxLeft)*maxScroll:0;
+ updateXScroll();
+}
+tablewrap.addEventListener('scroll',updateXScroll);
+xscroll.addEventListener('pointerdown',e=>{
+ e.preventDefault();
+ xscroll.setPointerCapture(e.pointerId);
+ setTableScrollFromTrack(e.clientX);
+ const move=ev=>setTableScrollFromTrack(ev.clientX);
+ const up=()=>{xscroll.removeEventListener('pointermove',move);xscroll.removeEventListener('pointerup',up);};
+ xscroll.addEventListener('pointermove',move);
+ xscroll.addEventListener('pointerup',up);
+});
+xscroll.addEventListener('wheel',e=>{e.preventDefault();tablewrap.scrollLeft+=e.deltaY||e.deltaX;updateXScroll();},{passive:false});
+window.addEventListener('resize',updateXScroll);
+updateXScroll();
 render();
 </script>
 </body></html>

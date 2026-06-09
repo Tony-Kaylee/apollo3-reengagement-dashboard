@@ -20,12 +20,19 @@ echo "[$(date -Is)] Starting Apollo 3 re-engagement dashboard update"
 
   cd "$REPO_DIR"
 
+  if [[ -f "${HOME}/.ssh/kaylee_apollo3_deploy" ]]; then
+    export GIT_SSH_COMMAND="ssh -i '${HOME}/.ssh/kaylee_apollo3_deploy' -o UserKnownHostsFile='${HOME}/.ssh/known_hosts' -o IdentitiesOnly=yes"
+  fi
+
   git fetch origin main
   git pull --ff-only origin main
 
   if [[ -n "${APOLLO3_DASHBOARD_REFRESH_COMMAND:-}" ]]; then
     echo "[$(date -Is)] Running APOLLO3_DASHBOARD_REFRESH_COMMAND"
     bash -lc "$APOLLO3_DASHBOARD_REFRESH_COMMAND"
+  elif [[ -x "./scripts/rebuild_dashboard.mjs" ]]; then
+    echo "[$(date -Is)] Running scripts/rebuild_dashboard.mjs"
+    ./scripts/rebuild_dashboard.mjs
   elif [[ -x "./scripts/rebuild_dashboard.py" ]]; then
     echo "[$(date -Is)] Running scripts/rebuild_dashboard.py"
     ./scripts/rebuild_dashboard.py
@@ -49,4 +56,3 @@ echo "[$(date -Is)] Starting Apollo 3 re-engagement dashboard update"
 
   echo "[$(date -Is)] Dashboard update published"
 ) 9>"$LOCK_FILE"
-

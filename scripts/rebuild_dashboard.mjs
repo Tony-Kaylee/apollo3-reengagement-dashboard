@@ -74,7 +74,7 @@ for (const ids of batch(accountIds, 75)) {
     `SELECT Id, AccountId, ActivityDate, ActivityDateTime, Subject, Type, Owner.Name, LastModifiedDate FROM Event WHERE AccountId IN (${inClause}) ORDER BY ActivityDate DESC NULLS LAST, LastModifiedDate DESC LIMIT 500`,
   ));
   opportunityRecords.push(...query(
-    `SELECT Id, AccountId, Name, StageName, IsClosed, IsWon, CloseDate, Amount, LastModifiedDate, Owner.Name FROM Opportunity WHERE AccountId IN (${inClause}) ORDER BY IsClosed ASC, LastModifiedDate DESC LIMIT 2000`,
+    `SELECT Id, AccountId, Name, StageName, IsClosed, IsWon, CloseDate, CreatedDate, Amount, LastModifiedDate, Owner.Name FROM Opportunity WHERE AccountId IN (${inClause}) ORDER BY IsClosed ASC, LastModifiedDate DESC LIMIT 2000`,
   ));
   taskCounts.push(...query(
     `SELECT AccountId, COUNT(Id) total FROM Task WHERE AccountId IN (${inClause}) GROUP BY AccountId`,
@@ -182,6 +182,8 @@ for (const deal of deals) {
     current_opp_owner: currentOpportunity?.Owner?.Name || '',
     current_opp_closed: Boolean(currentOpportunity?.IsClosed),
     current_opp_close_date: currentOpportunity?.CloseDate || '',
+    current_opp_created_date: currentOpportunity?.CreatedDate?.slice(0, 10) || '',
+    current_opp_amount: currentOpportunity?.Amount || 0,
   };
 }
 

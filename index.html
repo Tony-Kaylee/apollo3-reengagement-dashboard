@@ -92,6 +92,9 @@ td{padding:12px 14px;vertical-align:top}
 .owner{color:var(--ink2);white-space:nowrap;font-size:12px}
 .typ{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em}
 .tierchip{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:7px;white-space:nowrap;border:1px solid var(--c);color:var(--c);background:color-mix(in srgb,var(--c) 12%,transparent)}
+.focuschip{display:inline-flex;margin-left:7px;font-family:'IBM Plex Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.05em;color:var(--amber);border:1px solid rgba(245,185,66,.45);background:rgba(245,185,66,.1);padding:2px 7px;border-radius:6px;vertical-align:1px}
+tbody tr.focus-row{background:rgba(245,185,66,.035)}
+tbody tr.focus-row:hover{background:rgba(245,185,66,.075)}
 .feats{display:flex;flex-wrap:wrap;gap:5px;max-width:340px}
 .sfcell{min-width:190px;color:var(--ink2);font-size:12px}
 .sfcell .date{font-family:'IBM Plex Mono',monospace;color:var(--ink);font-size:12px}
@@ -159,6 +162,7 @@ footer{margin-top:30px;font-size:11.5px;color:var(--ink3);font-family:'IBM Plex 
   <select id="ffeat"><option value="">All features</option></select>
   <select id="fowner"><option value="">All reps</option></select>
   <select id="fstate"><option value="">All states</option></select>
+  <select id="ffocus"><option value="">All activity</option><option value="focus">Focus queue</option><option value="stale">Stale only</option><option value="low">Low-signal only</option></select>
   <button class="btn" id="reset">Reset</button>
  </div>
  <div class="tablewrap">
@@ -207,6 +211,23 @@ const sf=d=>d.sf_activity||{};
 const sfLast=d=>sf(d).last_contacted||'';
 const sfStage=d=>sf(d).current_stage||'';
 const sfCount=d=>sf(d).activity_count||0;
+const syncDate=new Date((SF_ACTIVITY_SUMMARY.generated_at||new Date().toISOString().slice(0,10))+'T00:00:00Z');
+const lowSignalRe=/\b(no answer|gatekeeper|left voicemail|voicemail|not the right time|satisfied with current platform|current platform|outreach|sent new in rev\.io|meeting reminder|here we go again|sunday night in slc|migrating from tigerpaw)\b/i;
+function daysSince(date){
+ if(!date)return Infinity;
+ return Math.floor((syncDate-new Date(date+'T00:00:00Z'))/86400000);
+}
+function focusReason(d){
+ const a=sf(d);
+ if(d.priority!==1)return '';
+ if(!a.last_contacted)return 'no SF activity';
+ const age=daysSince(a.last_contacted);
+ const low=lowSignalRe.test(a.last_touch||'');
+ if(age>30)return `${age}d since last touch`;
+ if(low)return 'recent touch is low-signal';
+ return '';
+}
+const focusDeals=DEALS.filter(d=>focusReason(d));
 
 // KPIs
 const totArr=DEALS.reduce((s,d)=>s+d.amount,0);
@@ -221,11 +242,12 @@ const kpis=[
  {lab:'Re-engage NOW',big:fmt(t13arr),c:'var(--green)',note:`<b>${t13.length} deals</b> whose blockers Apollo 3 has shipped`},
  {lab:'Coming soon (On Track)',big:fmt(t4arr),c:'var(--amber)',note:`<b>${t4.length} deals</b> gated on Portal / web pipeline — imminent`},
  {lab:'Still gated',big:fmt(t56arr),c:'var(--rust)',note:`<b>${t56.length} deals</b> need PM / Job Costing / D-Tools`},
+ {lab:'Focus queue',big:focusDeals.length.toLocaleString(),c:'var(--amber)',note:'Fully unblocked deals with stale or low-signal SF activity',filter:'focus'},
  {lab:'SF matched',big:`${SF_ACTIVITY_SUMMARY.matched_deals}<small>/${DEALS.length}</small>`,c:'var(--teal)',note:`Salesforce account matches · synced ${SF_ACTIVITY_SUMMARY.generated_at}`},
  {lab:'Recently touched',big:SF_ACTIVITY_SUMMARY.contacted_deals.toLocaleString(),c:'var(--green)',note:'Deals with Task/Event contact activity found'},
  {lab:'Open opps now',big:SF_ACTIVITY_SUMMARY.open_opp_deals.toLocaleString(),c:'var(--amber)',note:'Accounts with a current open opportunity in Salesforce'}
 ];
-document.getElementById('kpis').innerHTML=kpis.map(k=>`<div class="kpi" style="--c:${k.c}"><div class="lab">${k.lab}</div><div class="big">${k.big}</div><div class="note" style="--c:${k.c}">${k.note}</div></div>`).join('');
+document.getElementById('kpis').innerHTML=kpis.map(k=>`<div class="kpi" ${k.filter?`data-focus-filter="${k.filter}" style="--c:${k.c};cursor:pointer"`:`style="--c:${k.c}"`}><div class="lab">${k.lab}</div><div class="big">${k.big}</div><div class="note" style="--c:${k.c}">${k.note}</div></div>`).join('');
 
 // Funnel
 const tierAgg={};
@@ -267,30 +289,33 @@ function statusChips(d){
 }
 function render(){
  const q=document.getElementById('q').value.toLowerCase();
- const ft=document.getElementById('ftier').value, ff=document.getElementById('ffeat').value, fo=document.getElementById('fowner').value, fs=document.getElementById('fstate').value;
+ const ft=document.getElementById('ftier').value, ff=document.getElementById('ffeat').value, fo=document.getElementById('fowner').value, fs=document.getElementById('fstate').value, ffoc=document.getElementById('ffocus').value;
  let rows=DEALS.filter(d=>{
   if(ft&&d.tier!=ft)return false;
   if(fo&&d.owner!=fo)return false;
   if(fs&&(d.account_state||'')!=fs)return false;
   if(ff&&!d.statuses.some(s=>s.tag==ff))return false;
+  if(ffoc){const fr=focusReason(d);if(!fr)return false;if(ffoc=='stale'&&!/d since|no SF/.test(fr))return false;if(ffoc=='low'&&!/low-signal/.test(fr))return false;}
   if(q){const a=sf(d);const hay=(d.account+' '+d.opp+' '+d.owner+' '+(d.closed_lost_owner||'')+' '+(d.sf_account||'')+' '+(d.account_state||'')+' '+d.reason+' '+d.missing+' '+(a.account_owner||'')+' '+(a.last_touch||'')+' '+(a.current_stage||'')+' '+(a.current_opportunity||'')).toLowerCase();if(!hay.includes(q))return false;}
   return true;
  });
  rows.sort((a,b)=>{
   let x=sortK=='sf_last_contacted'?sfLast(a):sortK=='sf_current_stage'?sfStage(a):sortK=='sf_activity_count'?sfCount(a):a[sortK];
   let y=sortK=='sf_last_contacted'?sfLast(b):sortK=='sf_current_stage'?sfStage(b):sortK=='sf_activity_count'?sfCount(b):b[sortK];
+  if(sortK=='priority'){const fx=focusReason(a)?1:0,fy=focusReason(b)?1:0;if(fx!=fy)return(fy-fx)*sortDir;}
   if(typeof x=='string'){x=x||'';y=y||'';return x.localeCompare(y)*sortDir;}
   return((x||0)-(y||0))*sortDir;
  });
  tbody.innerHTML=rows.map(d=>{
   const c=TIERS[d.tier];
   const a=sf(d);
+  const fr=focusReason(d);
   const last=a.last_contacted?`<div class="sfcell"><div class="date">${esc(a.last_contacted)}</div><div class="detail" title="${esc(a.last_touch)}">${esc(a.last_touch||'Salesforce activity')}</div></div>`:'<div class="sfcell"><span class="none">— no activity —</span></div>';
   const stage=a.current_stage?`<div class="sfstage"><span class="stage ${a.current_opp_closed?'closed':''}" title="${esc(a.current_stage)}">${esc(a.current_stage)}</span><div class="oppname" title="${esc(a.current_opportunity)}">${esc(a.current_opportunity||'')}</div></div>`:'<div class="sfstage"><span class="none">—</span></div>';
   const volume=`<div class="sfcount">${(a.activity_count||0).toLocaleString()}<small>${(a.task_count||0).toLocaleString()} tasks · ${(a.event_count||0).toLocaleString()} events</small></div>`;
   const reason=d.reason?`<div class="reason">${esc(d.reason)}</div>`:'<div class="reason"><span class="none">— no note —</span></div>';
-  return `<tr>
-   <td><div class="acct">${d.account||'—'} ${d.tagged?'':'<span class="tag-untag">notes</span>'}</div><div class="opp">${d.opp||''} · <span class="typ">${d.type||''}</span></div></td>
+  return `<tr class="${fr?'focus-row':''}">
+   <td><div class="acct">${d.account||'—'} ${fr?`<span class="focuschip" title="${esc(fr)}">FOCUS</span>`:''} ${d.tagged?'':'<span class="tag-untag">notes</span>'}</div><div class="opp">${d.opp||''} · <span class="typ">${d.type||''}</span>${fr?` · <span class="note">${esc(fr)}</span>`:''}</div></td>
    <td class="owner">${d.owner||'—'}</td>
    <td class="owner">${d.closed_lost_owner||'—'}</td>
    <td class="owner">${d.account_state||'—'}</td>
@@ -308,9 +333,10 @@ function render(){
  document.getElementById('filtstat').innerHTML=`${rows.length} deals · ${fmt(arr)} ARR`;
 }
 document.querySelectorAll('thead th[data-k]').forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(sortK==k)sortDir*=-1;else{sortK=k;sortDir=(k=='amount')?-1:1;}render();});
-['q','ftier','ffeat','fowner','fstate'].forEach(id=>document.getElementById(id).addEventListener('input',render));
-document.getElementById('reset').onclick=()=>{document.getElementById('q').value='';['ftier','ffeat','fowner','fstate'].forEach(id=>document.getElementById(id).value='');sortK='priority';sortDir=1;render();};
+['q','ftier','ffeat','fowner','fstate','ffocus'].forEach(id=>document.getElementById(id).addEventListener('input',render));
+document.getElementById('reset').onclick=()=>{document.getElementById('q').value='';['ftier','ffeat','fowner','fstate','ffocus'].forEach(id=>document.getElementById(id).value='');sortK='priority';sortDir=1;render();};
 document.querySelectorAll('.frow').forEach(r=>r.onclick=()=>{document.getElementById('ftier').value=r.dataset.tier;render();document.querySelector('.controls').scrollIntoView();});
+document.querySelectorAll('[data-focus-filter]').forEach(k=>k.onclick=()=>{document.getElementById('ffocus').value=k.dataset.focusFilter;render();document.querySelector('.controls').scrollIntoView();});
 render();
 </script>
 </body></html>

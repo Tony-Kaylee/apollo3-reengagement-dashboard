@@ -5,6 +5,7 @@ import fs from 'node:fs';
 const ORG = process.env.SF_TARGET_ORG || 'revio-salesforce';
 const DASHBOARD_PATH = new URL('../index.html', import.meta.url);
 const GENERATED_AT = new Date().toISOString().slice(0, 10);
+const TOUCHES_SINCE = '2026-06-01';
 
 const html = fs.readFileSync(DASHBOARD_PATH, 'utf8');
 const dealsMatch = html.match(/const DEALS = (\[.*?\]);\n(?:const SF_ACTIVITY_SUMMARY = .*?;\n)?const TIERS = /s);
@@ -64,6 +65,8 @@ const eventRecords = [];
 const opportunityRecords = [];
 const taskCounts = [];
 const eventCounts = [];
+const taskCountsSince = [];
+const eventCountsSince = [];
 
 for (const ids of batch(accountIds, 75)) {
   const inClause = ids.map(soqlString).join(',');
@@ -82,10 +85,18 @@ for (const ids of batch(accountIds, 75)) {
   eventCounts.push(...query(
     `SELECT AccountId, COUNT(Id) total FROM Event WHERE AccountId IN (${inClause}) GROUP BY AccountId`,
   ));
+  taskCountsSince.push(...query(
+    `SELECT AccountId, COUNT(Id) total FROM Task WHERE AccountId IN (${inClause}) AND ActivityDate >= ${TOUCHES_SINCE} GROUP BY AccountId`,
+  ));
+  eventCountsSince.push(...query(
+    `SELECT AccountId, COUNT(Id) total FROM Event WHERE AccountId IN (${inClause}) AND ActivityDate >= ${TOUCHES_SINCE} GROUP BY AccountId`,
+  ));
 }
 
 const taskCountByAccount = byAccountIdAggregate(taskCounts, 'total');
 const eventCountByAccount = byAccountIdAggregate(eventCounts, 'total');
+const taskCountSinceByAccount = byAccountIdAggregate(taskCountsSince, 'total');
+const eventCountSinceByAccount = byAccountIdAggregate(eventCountsSince, 'total');
 
 const activitiesByAccount = new Map();
 for (const task of taskRecords) {
@@ -145,6 +156,7 @@ for (const deal of deals) {
       matched: false,
       last_contacted: '',
       activity_count: 0,
+      touches_since_2026_06_01: 0,
       task_count: 0,
       event_count: 0,
       current_stage: '',
@@ -162,6 +174,7 @@ for (const deal of deals) {
   const taskCount = taskCountByAccount.get(account.Id) || 0;
   const eventCount = eventCountByAccount.get(account.Id) || 0;
   const activityCount = taskCount + eventCount;
+  const touchesSince = (taskCountSinceByAccount.get(account.Id) || 0) + (eventCountSinceByAccount.get(account.Id) || 0);
   const lastContacted = lastActivity?.date || account.LastActivityDate || '';
   if (lastContacted) contactedDeals += 1;
   if (currentOpportunity && !currentOpportunity.IsClosed) openOppDeals += 1;
@@ -175,6 +188,7 @@ for (const deal of deals) {
       ? `${lastActivity.source}: ${lastActivity.subject}${lastActivity.owner ? ` (${lastActivity.owner})` : ''}`
       : '',
     activity_count: activityCount,
+    touches_since_2026_06_01: touchesSince,
     task_count: taskCount,
     event_count: eventCount,
     current_stage: currentOpportunity?.StageName || '',

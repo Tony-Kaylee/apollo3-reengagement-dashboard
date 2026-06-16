@@ -5,7 +5,10 @@ import fs from 'node:fs';
 const ORG = process.env.SF_TARGET_ORG || 'revio-salesforce';
 const DASHBOARD_PATH = new URL('../index.html', import.meta.url);
 const GENERATED_AT = new Date().toISOString().slice(0, 10);
-const TOUCHES_SINCE = '2026-06-01';
+const generatedAtDate = new Date(`${GENERATED_AT}T00:00:00Z`);
+const weekStartDate = new Date(generatedAtDate);
+weekStartDate.setUTCDate(generatedAtDate.getUTCDate() - ((generatedAtDate.getUTCDay() + 6) % 7));
+const WEEK_START = weekStartDate.toISOString().slice(0, 10);
 
 const html = fs.readFileSync(DASHBOARD_PATH, 'utf8');
 const dealsMatch = html.match(/const DEALS = (\[.*?\]);\n(?:const SF_ACTIVITY_SUMMARY = .*?;\n)?const TIERS = /s);
@@ -86,10 +89,10 @@ for (const ids of batch(accountIds, 75)) {
     `SELECT AccountId, COUNT(Id) total FROM Event WHERE AccountId IN (${inClause}) GROUP BY AccountId`,
   ));
   taskCountsSince.push(...query(
-    `SELECT AccountId, COUNT(Id) total FROM Task WHERE AccountId IN (${inClause}) AND ActivityDate >= ${TOUCHES_SINCE} GROUP BY AccountId`,
+    `SELECT AccountId, COUNT(Id) total FROM Task WHERE AccountId IN (${inClause}) AND ActivityDate >= ${WEEK_START} GROUP BY AccountId`,
   ));
   eventCountsSince.push(...query(
-    `SELECT AccountId, COUNT(Id) total FROM Event WHERE AccountId IN (${inClause}) AND ActivityDate >= ${TOUCHES_SINCE} GROUP BY AccountId`,
+    `SELECT AccountId, COUNT(Id) total FROM Event WHERE AccountId IN (${inClause}) AND ActivityDate >= ${WEEK_START} GROUP BY AccountId`,
   ));
 }
 
@@ -144,9 +147,19 @@ function pickCurrentOpportunity(accountId, originalOppName) {
   return opportunities.find((opp) => (opp.Name || '').toLowerCase() === normalizedOriginal) || opportunities[0];
 }
 
+function pickNewOpportunityThisWeek(accountId) {
+  const opportunities = opportunitiesByAccount.get(accountId) || [];
+  return opportunities.find((opp) => {
+    const createdDate = opp.CreatedDate?.slice(0, 10) || '';
+    return createdDate >= WEEK_START && createdDate <= GENERATED_AT;
+  }) || null;
+}
+
 let matchedDeals = 0;
 let contactedDeals = 0;
 let openOppDeals = 0;
+let newOppDealsThisWeek = 0;
+let touchedDealsThisWeek = 0;
 
 for (const deal of deals) {
   const sfName = deal.sf_account || deal.account;
@@ -156,11 +169,12 @@ for (const deal of deals) {
       matched: false,
       last_contacted: '',
       activity_count: 0,
-      touches_since_2026_06_01: 0,
+      touches_this_week: 0,
       task_count: 0,
       event_count: 0,
       current_stage: '',
       current_opportunity: '',
+      has_new_opp_this_week: false,
       account_owner: '',
       note: 'No exact Salesforce Account match found',
     };
@@ -171,13 +185,17 @@ for (const deal of deals) {
   const activities = activitiesByAccount.get(account.Id) || [];
   const lastActivity = activities[0];
   const currentOpportunity = pickCurrentOpportunity(account.Id, deal.opp);
+  const newOpportunityThisWeek = pickNewOpportunityThisWeek(account.Id);
   const taskCount = taskCountByAccount.get(account.Id) || 0;
   const eventCount = eventCountByAccount.get(account.Id) || 0;
   const activityCount = taskCount + eventCount;
   const touchesSince = (taskCountSinceByAccount.get(account.Id) || 0) + (eventCountSinceByAccount.get(account.Id) || 0);
   const lastContacted = lastActivity?.date || account.LastActivityDate || '';
+  const currentOpportunityCreatedDate = currentOpportunity?.CreatedDate?.slice(0, 10) || '';
   if (lastContacted) contactedDeals += 1;
   if (currentOpportunity && !currentOpportunity.IsClosed) openOppDeals += 1;
+  if (touchesSince > 0) touchedDealsThisWeek += 1;
+  if (newOpportunityThisWeek) newOppDealsThisWeek += 1;
 
   deal.sf_activity = {
     matched: true,
@@ -188,7 +206,7 @@ for (const deal of deals) {
       ? `${lastActivity.source}: ${lastActivity.subject}${lastActivity.owner ? ` (${lastActivity.owner})` : ''}`
       : '',
     activity_count: activityCount,
-    touches_since_2026_06_01: touchesSince,
+    touches_this_week: touchesSince,
     task_count: taskCount,
     event_count: eventCount,
     current_stage: currentOpportunity?.StageName || '',
@@ -196,16 +214,23 @@ for (const deal of deals) {
     current_opp_owner: currentOpportunity?.Owner?.Name || '',
     current_opp_closed: Boolean(currentOpportunity?.IsClosed),
     current_opp_close_date: currentOpportunity?.CloseDate || '',
-    current_opp_created_date: currentOpportunity?.CreatedDate?.slice(0, 10) || '',
+    current_opp_created_date: currentOpportunityCreatedDate,
     current_opp_amount: currentOpportunity?.Amount || 0,
+    has_new_opp_this_week: Boolean(newOpportunityThisWeek),
+    new_opp_this_week_name: newOpportunityThisWeek?.Name || '',
+    new_opp_this_week_stage: newOpportunityThisWeek?.StageName || '',
+    new_opp_this_week_created_date: newOpportunityThisWeek?.CreatedDate?.slice(0, 10) || '',
   };
 }
 
 const summary = {
   generated_at: GENERATED_AT,
+  week_start: WEEK_START,
   matched_deals: matchedDeals,
   unmatched_deals: deals.length - matchedDeals,
   contacted_deals: contactedDeals,
+  touched_deals_this_week: touchedDealsThisWeek,
+  new_opp_deals_this_week: newOppDealsThisWeek,
   open_opp_deals: openOppDeals,
   account_matches: accountRecords.length,
 };

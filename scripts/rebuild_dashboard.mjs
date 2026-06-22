@@ -229,6 +229,9 @@ for (const deal of deals) {
 
 const dashboardDeals = deals.filter((deal) => PSA_PRODUCT_TYPES.has(deal.sf_activity?.current_opp_product_type));
 const dashboardAccountIds = new Set(dashboardDeals.map((deal) => deal.sf_activity?.account_id).filter(Boolean));
+const openOpportunityIds = new Set(dashboardDeals
+  .filter((deal) => deal.sf_activity?.current_stage && !deal.sf_activity?.current_opp_closed)
+  .map((deal) => deal.sf_activity.current_opp_id || `${deal.sf_activity.account_id}|${deal.sf_activity.current_opportunity}`));
 const summary = {
   generated_at: GENERATED_AT,
   week_start: WEEK_START,
@@ -237,7 +240,7 @@ const summary = {
   contacted_deals: dashboardDeals.filter((deal) => deal.sf_activity?.last_contacted).length,
   touched_deals_this_week: dashboardDeals.filter((deal) => (deal.sf_activity?.touches_this_week || 0) > 0).length,
   new_opp_deals_this_week: dashboardDeals.filter((deal) => deal.sf_activity?.has_new_opp_this_week).length,
-  open_opp_deals: dashboardDeals.filter((deal) => deal.sf_activity?.current_stage && !deal.sf_activity?.current_opp_closed).length,
+  open_opp_deals: openOpportunityIds.size,
   account_matches: dashboardAccountIds.size,
 };
 

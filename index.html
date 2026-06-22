@@ -339,11 +339,11 @@ const kpis=[
  {lab:'Re-engage NOW',big:fmt(t13arr),c:'var(--green)',note:`<b>${t13.length} customers</b> whose blockers Apollo 3 has shipped`,tier:'reengage'},
  {lab:'Coming soon (On Track)',big:fmt(t4arr),c:'var(--amber)',note:`<b>${t4.length} customers</b> gated on Portal / web pipeline — imminent`,tier:'coming'},
  {lab:'Still gated',big:fmt(t56arr),c:'var(--rust)',note:`<b>${t56.length} customers</b> need PM / Job Costing / D-Tools`,tier:'gated'},
- {lab:'Closed won',big:closedWonDeals.length.toLocaleString(),c:'var(--green)',note:`${fmt(closedWonArr)} won from PSA opportunities since 6/1/26`,filter:'closedwon'},
+ {lab:'Recently touched',big:(SF_ACTIVITY_SUMMARY.touched_deals_this_week??DEALS.filter(d=>touchesSince(d)>0).length).toLocaleString(),c:'var(--teal)',note:`Deals with Task/Event activity ${weekLabel}`,filter:'touchedweek'},
  {lab:'Focus queue',big:focusDeals.length.toLocaleString(),c:'var(--amber)',note:'Fully unblocked deals with stale or low-signal SF activity',filter:'focus'},
  {lab:'Open opps now',big:openOppDeals.length.toLocaleString(),c:'var(--green)',note:`${fmt(openOppPipeline)} current Salesforce PSA pipeline`,filter:'openopp'},
  {lab:'New Opportunities Created This Week',big:(SF_ACTIVITY_SUMMARY.new_opp_deals_this_week??DEALS.filter(hasNewOppThisWeek).length).toLocaleString(),c:'var(--teal)',note:`Salesforce opportunities created ${weekLabel}`,filter:'newoppweek'},
- {lab:'Recently touched',big:(SF_ACTIVITY_SUMMARY.touched_deals_this_week??DEALS.filter(d=>touchesSince(d)>0).length).toLocaleString(),c:'var(--teal)',note:`Deals with Task/Event activity ${weekLabel}`,filter:'touchedweek'}
+ {lab:'Closed won',big:closedWonDeals.length.toLocaleString(),c:'var(--green)',note:`${fmt(closedWonArr)} won from PSA opportunities since 6/1/26`,filter:'closedwon'}
 ];
 document.getElementById('kpis').innerHTML=kpis.map(k=>`<div class="kpi" ${k.filter?`data-focus-filter="${k.filter}"`:''} ${k.tier?`data-tier-filter="${k.tier}"`:''} style="--c:${k.c};${(k.filter||k.tier)?'cursor:pointer':''}"><div class="lab">${k.lab}</div><div class="big">${k.big}</div><div class="note" style="--c:${k.c}">${k.note}</div></div>`).join('');
 document.getElementById('closedwins').innerHTML=closedWonDeals.length?closedWonDeals.map(d=>{

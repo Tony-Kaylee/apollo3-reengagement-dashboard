@@ -9,6 +9,7 @@ const generatedAtDate = new Date(`${GENERATED_AT}T00:00:00Z`);
 const weekStartDate = new Date(generatedAtDate);
 weekStartDate.setUTCDate(generatedAtDate.getUTCDate() - ((generatedAtDate.getUTCDay() + 6) % 7));
 const WEEK_START = weekStartDate.toISOString().slice(0, 10);
+const PSA_PRODUCT_TYPES = new Set(['PSA', 'PSA 2.0']);
 
 const html = fs.readFileSync(DASHBOARD_PATH, 'utf8');
 const dealsMatch = html.match(/const DEALS = (\[.*?\]);\n(?:const SF_ACTIVITY_SUMMARY = .*?;\n)?const TIERS = /s);
@@ -80,7 +81,7 @@ for (const ids of batch(accountIds, 75)) {
     `SELECT Id, AccountId, ActivityDate, ActivityDateTime, Subject, Type, Owner.Name, LastModifiedDate FROM Event WHERE AccountId IN (${inClause}) ORDER BY ActivityDate DESC NULLS LAST, LastModifiedDate DESC LIMIT 500`,
   ));
   opportunityRecords.push(...query(
-    `SELECT Id, AccountId, Name, StageName, IsClosed, IsWon, CloseDate, CreatedDate, Amount, LastModifiedDate, Owner.Name FROM Opportunity WHERE AccountId IN (${inClause}) ORDER BY IsClosed ASC, LastModifiedDate DESC LIMIT 2000`,
+    `SELECT Id, AccountId, Name, StageName, IsClosed, IsWon, CloseDate, CreatedDate, Amount, Product_Type__c, LastModifiedDate, Owner.Name FROM Opportunity WHERE AccountId IN (${inClause}) AND Product_Type__c IN ('PSA','PSA 2.0') ORDER BY IsClosed ASC, LastModifiedDate DESC LIMIT 2000`,
   ));
   taskCounts.push(...query(
     `SELECT AccountId, COUNT(Id) total FROM Task WHERE AccountId IN (${inClause}) GROUP BY AccountId`,
@@ -139,7 +140,7 @@ for (const opportunity of opportunityRecords) {
 }
 
 function pickCurrentOpportunity(accountId, originalOppName) {
-  const opportunities = opportunitiesByAccount.get(accountId) || [];
+  const opportunities = (opportunitiesByAccount.get(accountId) || []).filter((opp) => PSA_PRODUCT_TYPES.has(opp.Product_Type__c));
   if (!opportunities.length) return null;
   const open = opportunities.find((opp) => !opp.IsClosed);
   if (open) return open;
@@ -148,7 +149,7 @@ function pickCurrentOpportunity(accountId, originalOppName) {
 }
 
 function pickNewOpportunityThisWeek(accountId) {
-  const opportunities = opportunitiesByAccount.get(accountId) || [];
+  const opportunities = (opportunitiesByAccount.get(accountId) || []).filter((opp) => PSA_PRODUCT_TYPES.has(opp.Product_Type__c));
   return opportunities.find((opp) => {
     const createdDate = opp.CreatedDate?.slice(0, 10) || '';
     return createdDate >= WEEK_START && createdDate <= GENERATED_AT;
@@ -212,6 +213,7 @@ for (const deal of deals) {
     current_stage: currentOpportunity?.StageName || '',
     current_opportunity: currentOpportunity?.Name || '',
     current_opp_owner: currentOpportunity?.Owner?.Name || '',
+    current_opp_product_type: currentOpportunity?.Product_Type__c || '',
     current_opp_closed: Boolean(currentOpportunity?.IsClosed),
     current_opp_close_date: currentOpportunity?.CloseDate || '',
     current_opp_created_date: currentOpportunityCreatedDate,

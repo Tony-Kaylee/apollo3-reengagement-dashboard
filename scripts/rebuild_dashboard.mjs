@@ -51,6 +51,45 @@ function byAccountIdAggregate(records, valueField = 'expr0') {
   return map;
 }
 
+function currentOpportunityDate(deal) {
+  return deal.sf_activity?.current_opp_created_date || deal.sf_activity?.current_opp_close_date || '';
+}
+
+function lostAmountDelta(deal) {
+  const currentAmount = deal.sf_activity?.current_opp_amount || 0;
+  if (!currentAmount) return Number.MAX_SAFE_INTEGER;
+  return Math.abs((deal.amount || 0) - currentAmount);
+}
+
+function isBetterDashboardRow(candidate, current) {
+  if (!current) return true;
+  const candidateOpen = candidate.sf_activity?.current_stage && !candidate.sf_activity?.current_opp_closed;
+  const currentOpen = current.sf_activity?.current_stage && !current.sf_activity?.current_opp_closed;
+  if (candidateOpen !== currentOpen) return candidateOpen;
+  if (candidate.priority !== current.priority) return candidate.priority < current.priority;
+  const candidateTagged = candidate.statuses?.length || 0;
+  const currentTagged = current.statuses?.length || 0;
+  if (candidateTagged !== currentTagged) return candidateTagged > currentTagged;
+  const candidateDate = currentOpportunityDate(candidate);
+  const currentDate = currentOpportunityDate(current);
+  if (candidateDate !== currentDate) return candidateDate > currentDate;
+  const candidateDelta = lostAmountDelta(candidate);
+  const currentDelta = lostAmountDelta(current);
+  if (candidateDelta !== currentDelta) return candidateDelta < currentDelta;
+  return (candidate.amount || 0) > (current.amount || 0);
+}
+
+function mergeStatusLists(rows) {
+  const statuses = new Map();
+  for (const row of rows) {
+    for (const status of row.statuses || []) {
+      const key = `${status.tag}|${status.status}`;
+      if (!statuses.has(key)) statuses.set(key, status);
+    }
+  }
+  return [...statuses.values()];
+}
+
 const accountRecords = [];
 for (const names of batch(uniqueNames, 45)) {
   accountRecords.push(...query(
@@ -227,7 +266,22 @@ for (const deal of deals) {
   };
 }
 
-const dashboardDeals = deals.filter((deal) => PSA_PRODUCT_TYPES.has(deal.sf_activity?.current_opp_product_type));
+const psaDeals = deals.filter((deal) => PSA_PRODUCT_TYPES.has(deal.sf_activity?.current_opp_product_type));
+const dealsByAccount = new Map();
+for (const deal of psaDeals) {
+  const key = deal.sf_activity?.account_id || deal.sf_account || deal.account;
+  if (!dealsByAccount.has(key)) dealsByAccount.set(key, []);
+  dealsByAccount.get(key).push(deal);
+}
+
+const dashboardDeals = [...dealsByAccount.values()].map((rows) => {
+  const selected = rows.reduce((best, row) => (isBetterDashboardRow(row, best) ? row : best), null);
+  const merged = { ...selected };
+  merged.statuses = mergeStatusLists(rows);
+  merged.tagged = rows.some((row) => row.tagged);
+  merged.duplicate_source_deals = rows.length;
+  return merged;
+});
 const dashboardAccountIds = new Set(dashboardDeals.map((deal) => deal.sf_activity?.account_id).filter(Boolean));
 const openOpportunityIds = new Set(dashboardDeals
   .filter((deal) => deal.sf_activity?.current_stage && !deal.sf_activity?.current_opp_closed)

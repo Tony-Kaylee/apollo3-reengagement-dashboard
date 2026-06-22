@@ -227,21 +227,23 @@ for (const deal of deals) {
   };
 }
 
+const dashboardDeals = deals.filter((deal) => PSA_PRODUCT_TYPES.has(deal.sf_activity?.current_opp_product_type));
+const dashboardAccountIds = new Set(dashboardDeals.map((deal) => deal.sf_activity?.account_id).filter(Boolean));
 const summary = {
   generated_at: GENERATED_AT,
   week_start: WEEK_START,
-  matched_deals: matchedDeals,
-  unmatched_deals: deals.length - matchedDeals,
-  contacted_deals: contactedDeals,
-  touched_deals_this_week: touchedDealsThisWeek,
-  new_opp_deals_this_week: newOppDealsThisWeek,
-  open_opp_deals: openOppDeals,
-  account_matches: accountRecords.length,
+  matched_deals: dashboardDeals.filter((deal) => deal.sf_activity?.matched).length,
+  unmatched_deals: dashboardDeals.filter((deal) => !deal.sf_activity?.matched).length,
+  contacted_deals: dashboardDeals.filter((deal) => deal.sf_activity?.last_contacted).length,
+  touched_deals_this_week: dashboardDeals.filter((deal) => (deal.sf_activity?.touches_this_week || 0) > 0).length,
+  new_opp_deals_this_week: dashboardDeals.filter((deal) => deal.sf_activity?.has_new_opp_this_week).length,
+  open_opp_deals: dashboardDeals.filter((deal) => deal.sf_activity?.current_stage && !deal.sf_activity?.current_opp_closed).length,
+  account_matches: dashboardAccountIds.size,
 };
 
 let nextHtml = html.replace(
   /const DEALS = \[.*?\];\n(?:const SF_ACTIVITY_SUMMARY = .*?;\n)?const TIERS = /s,
-  `const DEALS = ${JSON.stringify(deals)};\nconst SF_ACTIVITY_SUMMARY = ${JSON.stringify(summary)};\nconst TIERS = `,
+  `const DEALS = ${JSON.stringify(dashboardDeals)};\nconst SF_ACTIVITY_SUMMARY = ${JSON.stringify(summary)};\nconst TIERS = `,
 );
 
 if (!/const SF_ACTIVITY_SUMMARY = /.test(nextHtml)) {

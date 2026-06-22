@@ -120,7 +120,7 @@ for (const ids of batch(accountIds, 75)) {
     `SELECT Id, AccountId, ActivityDate, ActivityDateTime, Subject, Type, Owner.Name, LastModifiedDate FROM Event WHERE AccountId IN (${inClause}) ORDER BY ActivityDate DESC NULLS LAST, LastModifiedDate DESC LIMIT 500`,
   ));
   opportunityRecords.push(...query(
-    `SELECT Id, AccountId, Name, StageName, IsClosed, IsWon, CloseDate, CreatedDate, Amount, Product_Type__c, LastModifiedDate, Owner.Name FROM Opportunity WHERE AccountId IN (${inClause}) AND Product_Type__c IN ('PSA','PSA 2.0') ORDER BY IsClosed ASC, LastModifiedDate DESC LIMIT 2000`,
+    `SELECT Id, AccountId, Name, StageName, IsClosed, IsWon, CloseDate, CreatedDate, Amount, Product_Type__c, LastModifiedDate, Owner.Name FROM Opportunity WHERE AccountId IN (${inClause}) AND Product_Type__c IN ('PSA','PSA 2.0') ORDER BY IsClosed ASC, CreatedDate DESC, LastModifiedDate DESC LIMIT 2000`,
   ));
   taskCounts.push(...query(
     `SELECT AccountId, COUNT(Id) total FROM Task WHERE AccountId IN (${inClause}) GROUP BY AccountId`,
@@ -181,7 +181,9 @@ for (const opportunity of opportunityRecords) {
 function pickCurrentOpportunity(accountId, originalOppName) {
   const opportunities = (opportunitiesByAccount.get(accountId) || []).filter((opp) => PSA_PRODUCT_TYPES.has(opp.Product_Type__c));
   if (!opportunities.length) return null;
-  const open = opportunities.find((opp) => !opp.IsClosed);
+  const open = opportunities
+    .filter((opp) => !opp.IsClosed)
+    .sort((a, b) => (b.CreatedDate || '').localeCompare(a.CreatedDate || '') || (b.LastModifiedDate || '').localeCompare(a.LastModifiedDate || ''))[0];
   if (open) return open;
   const normalizedOriginal = (originalOppName || '').toLowerCase();
   return opportunities.find((opp) => (opp.Name || '').toLowerCase() === normalizedOriginal) || opportunities[0];

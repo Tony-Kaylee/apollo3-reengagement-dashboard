@@ -307,7 +307,7 @@ function nextMove(d){
  if(d.priority===4)return {label:'Nurture around release timing',detail:'Set a follow-up tied to the in-dev capability becoming usable.'};
  if(statuses.includes('gap')){
   if(/DTools/i.test(tags))return {label:'Hold for D-Tools signal',detail:'Keep warm for CEDIA/AV motion; avoid overpromising integration coverage.'};
-  if(/Xero|Sage|Zoho|NetSuite|Central Station|Subcontractors|Progressive Billing/i.test(tags))return {label:'Keep in product-watch',detail:'Hard gap remains; only re-engage if a workaround or roadmap update exists.'};
+  if(/Xero|Sage|Zoho|NetSuite|Subcontractors/i.test(tags))return {label:'Keep in product-watch',detail:'Hard gap remains; only re-engage if a workaround or roadmap update exists.'};
  }
  return {label:'Qualify fit first',detail:'No clear Viking 1 unlock; confirm pain and timing before rep time.'};
 }

@@ -24,9 +24,9 @@ const CAPABILITY_OVERRIDES = {
     note: 'Portal.io product sync is delivered, and Viking 1 adds Portal proposal-to-quote and contact sync.',
   },
   'Progressive Billing': {
-    status: 'partial',
+    status: 'delivered',
     rel: 'V1',
-    note: 'Progressive billing now supports multi-ticket invoicing; Viking 1 project-billing charges are available/on track. Validate the exact project billing workflow.',
+    note: 'Viking 1 supports progress billing workflows with project charges by percent of remaining balance, fixed amount, and selected project Parts & Labor items.',
   },
   'Central Station': {
     status: 'delivered',

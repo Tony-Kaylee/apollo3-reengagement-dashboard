@@ -10,6 +10,96 @@ const weekStartDate = new Date(generatedAtDate);
 weekStartDate.setUTCDate(generatedAtDate.getUTCDate() - ((generatedAtDate.getUTCDay() + 6) % 7));
 const WEEK_START = weekStartDate.toISOString().slice(0, 10);
 const PSA_PRODUCT_TYPES = new Set(['PSA', 'PSA 2.0']);
+const UNLOCK_NAME = 'Viking 1';
+
+const CAPABILITY_OVERRIDES = {
+  'Knowledgebase': {
+    status: 'delivered',
+    rel: 'V1',
+    note: 'Knowledgebase is Available/Delivered in Viking 1 and listed in the 2026-08-03 release notes.',
+  },
+  'Integration - Portal': {
+    status: 'delivered',
+    rel: 'A3+V1',
+    note: 'Portal.io product sync is delivered, and Viking 1 adds Portal proposal-to-quote and contact sync.',
+  },
+  'Progressive Billing': {
+    status: 'partial',
+    rel: 'V1',
+    note: 'Progressive billing now supports multi-ticket invoicing; Viking 1 project-billing charges are available/on track. Validate the exact project billing workflow.',
+  },
+  'Central Station': {
+    status: 'delivered',
+    rel: 'V1',
+    note: 'Viking 1 delivered CMS history plus COPS/Rapid Response central-station test/no-action controls.',
+  },
+  'Integration - CMS': {
+    status: 'delivered',
+    rel: 'A3+V1',
+    note: 'CMS account sync is delivered and Viking 1 adds CMS alarm/activity history into Rev.io.',
+  },
+  'Integration - RapidResponse': {
+    status: 'delivered',
+    rel: 'V1',
+    note: 'Rapid Response account sync and central-station no-action/test controls are Available/Delivered in Viking 1.',
+  },
+  'Integration - QuickBooks Desktop': {
+    status: 'delivered',
+    rel: 'A3+V1',
+    note: 'QuickBooks Desktop invoice/customer/item sync is live, with Viking 1 QBD reliability and Web Connector work delivered.',
+  },
+  'CPQ': {
+    status: 'delivered',
+    rel: 'A1-A3+V1',
+    note: 'Quotes, templates, macros, product images, descriptions, part-number search, one-time products, and Portal.io product/pricing sync are delivered.',
+  },
+  'Consolidated PO': {
+    status: 'partial',
+    rel: 'A1+V1',
+    note: 'Purchase orders and PO enhancements are delivered; full consolidated PO automation should still be validated by workflow.',
+  },
+  'Zone Lists': {
+    status: 'partial',
+    rel: 'A1-A3+V1',
+    note: 'Inventory core, serial lookup, valuation, reservations search, location filtering, and stock-level views are available; confirm exact zone-list workflow.',
+  },
+  'Contracts / Agreements (in dev)': {
+    status: 'progress',
+    rel: 'V1',
+    note: 'Agreement management is delivered in core areas, but several agreement components remain staged for release.',
+  },
+  'Contracts - Hourly and Hourly Usage': {
+    status: 'progress',
+    rel: 'V1',
+    note: 'Hourly agreement components are delivered/staged in Viking 1; validate release readiness before positioning as fully GA.',
+  },
+  'Contracts - Product and Labor Pricing Management': {
+    status: 'progress',
+    rel: 'V1',
+    note: 'Agreement pricing and component work is delivered/staged in Viking 1; validate release readiness before positioning as fully GA.',
+  },
+  'Contracts - Quarterly/Semi-Annual/Annual Billing Cycles': {
+    status: 'progress',
+    rel: 'V1',
+    note: 'Agreement recurring/overage/component work is delivered/staged in Viking 1; validate exact billing-cycle fit.',
+  },
+  'Contracts - Flexible Rate Adjustments': {
+    status: 'progress',
+    rel: 'V1',
+    note: 'Agreement component/rate work is delivered/staged in Viking 1; validate exact rate-adjustment fit.',
+  },
+};
+
+const STATUS_PRIORITY = { delivered: 1, partial: 3, progress: 4, gap: 6 };
+const TIER_BY_PRIORITY = {
+  1: '1 · Fully Unblocked — Re-engage Now',
+  2: '2 · Core Delivered — Re-engage Now',
+  3: '3 · Partial Win — Lead w/ Delivered',
+  4: '4 · Coming Soon — Watch',
+  5: '5 · Partial — Still Gated',
+  6: '6 · Still Blocked (hard gaps)',
+  99: `No ${UNLOCK_NAME} signal`,
+};
 
 const html = fs.readFileSync(DASHBOARD_PATH, 'utf8');
 const dealsMatch = html.match(/const DEALS = (\[.*?\]);\n(?:const SF_ACTIVITY_SUMMARY = .*?;\n)?const TIERS = /s);
@@ -18,6 +108,26 @@ if (!dealsMatch) {
 }
 
 const deals = JSON.parse(dealsMatch[1]);
+function applyCapabilityOverrides(deal) {
+  deal.statuses = (deal.statuses || []).map((status) => {
+    const override = CAPABILITY_OVERRIDES[status.tag];
+    return override ? { ...status, ...override } : status;
+  });
+  if (!deal.statuses.length) {
+    deal.tier = TIER_BY_PRIORITY[99];
+    deal.priority = 99;
+    return;
+  }
+  const worst = Math.max(...deal.statuses.map((status) => STATUS_PRIORITY[status.status] || 6));
+  const hasDelivered = deal.statuses.some((status) => status.status === 'delivered');
+  let priority = worst;
+  if (worst === 1 && deal.statuses.length > 1) priority = 2;
+  if (worst === 3 && !hasDelivered) priority = 5;
+  deal.priority = priority;
+  deal.tier = TIER_BY_PRIORITY[priority] || TIER_BY_PRIORITY[6];
+}
+
+for (const deal of deals) applyCapabilityOverrides(deal);
 const uniqueNames = [...new Set(deals.map((deal) => deal.sf_account || deal.account).filter(Boolean))];
 
 function soqlString(value) {

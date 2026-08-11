@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UPDATE_SCRIPT="${REPO_DIR}/scripts/update_dashboard.sh"
-JOB_NAME="Apollo 3 Re-engagement Dashboard Update"
+JOB_NAME="Viking 1 Unlock Dashboard Update"
 
 chmod +x "$UPDATE_SCRIPT"
 
@@ -19,7 +19,7 @@ fi
 openclaw cron add \
   --agent main \
   --name "$JOB_NAME" \
-  --description "Refresh and publish the Apollo 3 re-engagement dashboard from its configured data source." \
+  --description "Refresh and publish the Viking 1 unlock dashboard from its configured data source." \
   --cron "0 9 * * *" \
   --tz "America/New_York" \
   --session isolated \

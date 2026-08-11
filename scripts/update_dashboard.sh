@@ -10,7 +10,7 @@ mkdir -p "$LOG_DIR"
 
 exec >>"$LOG_FILE" 2>&1
 
-echo "[$(date -Is)] Starting Apollo 3 re-engagement dashboard update"
+echo "[$(date -Is)] Starting Viking 1 unlock dashboard update"
 
 (
   flock -n 9 || {
@@ -51,7 +51,7 @@ echo "[$(date -Is)] Starting Apollo 3 re-engagement dashboard update"
   fi
 
   git add index.html
-  git commit -m "Update Apollo 3 re-engagement dashboard"
+  git commit -m "Update Viking 1 unlock dashboard"
   git push origin main
 
   echo "[$(date -Is)] Dashboard update published"

@@ -11,6 +11,7 @@ weekStartDate.setUTCDate(generatedAtDate.getUTCDate() - ((generatedAtDate.getUTC
 const WEEK_START = weekStartDate.toISOString().slice(0, 10);
 const PSA_PRODUCT_TYPES = new Set(['PSA', 'PSA 2.0']);
 const UNLOCK_NAME = 'Viking 1';
+const APOLLO3_FULLY_UNBLOCKED_BASELINE = 49;
 
 const CAPABILITY_OVERRIDES = {
   'Knowledgebase': {
@@ -408,7 +409,10 @@ const summary = {
   new_opp_deals_this_week: dashboardDeals.filter((deal) => deal.sf_activity?.has_new_opp_this_week).length,
   open_opp_deals: openOpportunityIds.size,
   account_matches: dashboardAccountIds.size,
+  apollo3_fully_unblocked_baseline: APOLLO3_FULLY_UNBLOCKED_BASELINE,
+  fully_unblocked_now: dashboardDeals.filter((deal) => deal.priority === 1).length,
 };
+summary.newly_fully_unblocked = Math.max(0, summary.fully_unblocked_now - summary.apollo3_fully_unblocked_baseline);
 
 let nextHtml = html.replace(
   /const DEALS = \[.*?\];\n(?:const SF_ACTIVITY_SUMMARY = .*?;\n)?const TIERS = /s,

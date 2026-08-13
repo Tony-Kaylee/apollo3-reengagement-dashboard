@@ -4,13 +4,14 @@ Static GitHub Pages site for Rev.io lost-deal re-engagement analysis.
 
 Live site: https://tony-kaylee.github.io/apollo3-reengagement-dashboard/
 
-## Daily Refresh
+## Business-Hours Refresh
 
-The dashboard has a daily OpenClaw cron that runs the rebuild at 9:00 AM America/New_York.
+The dashboard has an OpenClaw cron that runs the rebuild hourly from 8:00 AM through 5:00 PM America/New_York, Monday through Friday.
 
 Refresh behavior:
 - Pulls the latest repo state.
 - Rebuilds Salesforce activity, current PSA opportunities, weekly touches, open opps, and closed-won signals.
+- Rebuilds same-day hourly contact pacing from Salesforce Task/Event records for accounts in the dashboard list.
 - Applies the current Viking 1 capability scoring map sourced from the live Products Roadmap and release notes review.
 - Publishes `index.html` back to GitHub Pages when the dashboard changes.
 

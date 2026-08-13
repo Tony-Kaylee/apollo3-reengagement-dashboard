@@ -9,6 +9,8 @@ const generatedAtDate = new Date(`${GENERATED_AT}T00:00:00Z`);
 const weekStartDate = new Date(generatedAtDate);
 weekStartDate.setUTCDate(generatedAtDate.getUTCDate() - ((generatedAtDate.getUTCDay() + 6) % 7));
 const WEEK_START = weekStartDate.toISOString().slice(0, 10);
+const BUSINESS_TZ = 'America/New_York';
+const BUSINESS_HOURS = Array.from({ length: 10 }, (_, i) => i + 8);
 const PSA_PRODUCT_TYPES = new Set(['PSA', 'PSA 2.0']);
 const UNLOCK_NAME = 'Viking 1';
 const APOLLO3_FULLY_UNBLOCKED_BASELINE = 49;
@@ -162,6 +164,45 @@ function byAccountIdAggregate(records, valueField = 'expr0') {
   return map;
 }
 
+function timeParts(date = new Date(), timeZone = BUSINESS_TZ) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+    second: Number(parts.second),
+  };
+}
+
+const businessNow = timeParts();
+const BUSINESS_DATE = businessNow.date;
+const CURRENT_BUSINESS_HOUR = businessNow.hour;
+
+function businessHourLabel(hour) {
+  const suffix = hour >= 12 ? 'PM' : 'AM';
+  const display = hour % 12 || 12;
+  return `${display}${suffix}`;
+}
+
+function timestampBusinessParts(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return timeParts(date);
+}
+
 function currentOpportunityDate(deal) {
   return deal.sf_activity?.current_opp_created_date || deal.sf_activity?.current_opp_close_date || '';
 }
@@ -225,10 +266,16 @@ const eventCountsSince = [];
 for (const ids of batch(accountIds, 75)) {
   const inClause = ids.map(soqlString).join(',');
   taskRecords.push(...query(
-    `SELECT Id, AccountId, ActivityDate, Subject, Type, Status, Owner.Name, LastModifiedDate FROM Task WHERE AccountId IN (${inClause}) ORDER BY ActivityDate DESC NULLS LAST, LastModifiedDate DESC LIMIT 500`,
+    `SELECT Id, AccountId, ActivityDate, Subject, Type, Status, Owner.Name, CreatedDate, LastModifiedDate FROM Task WHERE AccountId IN (${inClause}) ORDER BY ActivityDate DESC NULLS LAST, LastModifiedDate DESC LIMIT 500`,
   ));
   eventRecords.push(...query(
-    `SELECT Id, AccountId, ActivityDate, ActivityDateTime, Subject, Type, Owner.Name, LastModifiedDate FROM Event WHERE AccountId IN (${inClause}) ORDER BY ActivityDate DESC NULLS LAST, LastModifiedDate DESC LIMIT 500`,
+    `SELECT Id, AccountId, ActivityDate, ActivityDateTime, Subject, Type, Owner.Name, CreatedDate, LastModifiedDate FROM Event WHERE AccountId IN (${inClause}) ORDER BY ActivityDate DESC NULLS LAST, LastModifiedDate DESC LIMIT 500`,
+  ));
+  taskRecords.push(...query(
+    `SELECT Id, AccountId, ActivityDate, Subject, Type, Status, Owner.Name, CreatedDate, LastModifiedDate FROM Task WHERE AccountId IN (${inClause}) AND CreatedDate = TODAY ORDER BY CreatedDate DESC LIMIT 2000`,
+  ));
+  eventRecords.push(...query(
+    `SELECT Id, AccountId, ActivityDate, ActivityDateTime, Subject, Type, Owner.Name, CreatedDate, LastModifiedDate FROM Event WHERE AccountId IN (${inClause}) AND CreatedDate = TODAY ORDER BY CreatedDate DESC LIMIT 2000`,
   ));
   opportunityRecords.push(...query(
     `SELECT Id, AccountId, Name, StageName, IsClosed, IsWon, CloseDate, CreatedDate, Amount, Product_Type__c, LastModifiedDate, Owner.Name FROM Opportunity WHERE AccountId IN (${inClause}) AND Product_Type__c IN ('PSA','PSA 2.0') ORDER BY IsClosed ASC, CreatedDate DESC, LastModifiedDate DESC LIMIT 2000`,
@@ -253,29 +300,73 @@ const taskCountSinceByAccount = byAccountIdAggregate(taskCountsSince, 'total');
 const eventCountSinceByAccount = byAccountIdAggregate(eventCountsSince, 'total');
 
 const activitiesByAccount = new Map();
+const seenActivityIds = new Set();
+const hourlyByAccount = new Map();
+const hourlyTotals = Object.fromEntries(BUSINESS_HOURS.map((hour) => [hour, 0]));
+const hourlyAccountSets = Object.fromEntries(BUSINESS_HOURS.map((hour) => [hour, new Set()]));
+
+function addHourlyContact(activity) {
+  if (!activity.AccountId) return;
+  const stamped = timestampBusinessParts(activity.CreatedDate || activity.LastModifiedDate || activity.ActivityDateTime);
+  if (!stamped || stamped.date !== BUSINESS_DATE || !BUSINESS_HOURS.includes(stamped.hour)) return;
+  if (!hourlyByAccount.has(activity.AccountId)) {
+    hourlyByAccount.set(activity.AccountId, {
+      total: 0,
+      latest_at: '',
+      latest_touch: '',
+      hours: Object.fromEntries(BUSINESS_HOURS.map((hour) => [hour, 0])),
+    });
+  }
+  const accountHourly = hourlyByAccount.get(activity.AccountId);
+  accountHourly.total += 1;
+  accountHourly.hours[stamped.hour] += 1;
+  hourlyTotals[stamped.hour] += 1;
+  hourlyAccountSets[stamped.hour].add(activity.AccountId);
+  const stamp = activity.CreatedDate || activity.LastModifiedDate || activity.ActivityDateTime || '';
+  if (stamp > accountHourly.latest_at) {
+    accountHourly.latest_at = stamp;
+    accountHourly.latest_touch = `${activity.source}: ${activity.subject}${activity.owner ? ` (${activity.owner})` : ''}`;
+  }
+}
+
 for (const task of taskRecords) {
   if (!task.AccountId) continue;
+  if (seenActivityIds.has(task.Id)) continue;
+  seenActivityIds.add(task.Id);
   const activity = {
+    id: task.Id,
     source: 'Task',
     date: task.ActivityDate || task.LastModifiedDate?.slice(0, 10) || '',
     subject: task.Subject || task.Type || 'Task',
     owner: task.Owner?.Name || '',
     status: task.Status || '',
+    AccountId: task.AccountId,
+    CreatedDate: task.CreatedDate || '',
+    LastModifiedDate: task.LastModifiedDate || '',
   };
   if (!activitiesByAccount.has(task.AccountId)) activitiesByAccount.set(task.AccountId, []);
   activitiesByAccount.get(task.AccountId).push(activity);
+  addHourlyContact(activity);
 }
 for (const event of eventRecords) {
   if (!event.AccountId) continue;
+  if (seenActivityIds.has(event.Id)) continue;
+  seenActivityIds.add(event.Id);
   const activity = {
+    id: event.Id,
     source: 'Event',
     date: event.ActivityDate || event.ActivityDateTime?.slice(0, 10) || event.LastModifiedDate?.slice(0, 10) || '',
     subject: event.Subject || event.Type || 'Event',
     owner: event.Owner?.Name || '',
     status: '',
+    AccountId: event.AccountId,
+    ActivityDateTime: event.ActivityDateTime || '',
+    CreatedDate: event.CreatedDate || '',
+    LastModifiedDate: event.LastModifiedDate || '',
   };
   if (!activitiesByAccount.has(event.AccountId)) activitiesByAccount.set(event.AccountId, []);
   activitiesByAccount.get(event.AccountId).push(activity);
+  addHourlyContact(activity);
 }
 
 for (const activities of activitiesByAccount.values()) {
@@ -341,6 +432,12 @@ for (const deal of deals) {
   const newOpportunityThisWeek = pickNewOpportunityThisWeek(account.Id);
   const taskCount = taskCountByAccount.get(account.Id) || 0;
   const eventCount = eventCountByAccount.get(account.Id) || 0;
+  const hourlyContact = hourlyByAccount.get(account.Id) || {
+    total: 0,
+    latest_at: '',
+    latest_touch: '',
+    hours: Object.fromEntries(BUSINESS_HOURS.map((hour) => [hour, 0])),
+  };
   const activityCount = taskCount + eventCount;
   const touchesSince = (taskCountSinceByAccount.get(account.Id) || 0) + (eventCountSinceByAccount.get(account.Id) || 0);
   const lastContacted = lastActivity?.date || account.LastActivityDate || '';
@@ -360,6 +457,11 @@ for (const deal of deals) {
       : '',
     activity_count: activityCount,
     touches_this_week: touchesSince,
+    contacts_today: hourlyContact.total,
+    contacts_current_hour: hourlyContact.hours[CURRENT_BUSINESS_HOUR] || 0,
+    hourly_contacts: hourlyContact.hours,
+    latest_contact_logged_at: hourlyContact.latest_at,
+    latest_contact_logged_touch: hourlyContact.latest_touch,
     task_count: taskCount,
     event_count: eventCount,
     current_stage: currentOpportunity?.StageName || '',
@@ -401,7 +503,18 @@ const openOpportunityIds = new Set(dashboardDeals
   .map((deal) => deal.sf_activity.current_opp_id || `${deal.sf_activity.account_id}|${deal.sf_activity.current_opportunity}`));
 const summary = {
   generated_at: GENERATED_AT,
+  generated_at_utc: new Date().toISOString(),
   week_start: WEEK_START,
+  business_timezone: BUSINESS_TZ,
+  business_date: BUSINESS_DATE,
+  current_business_hour: CURRENT_BUSINESS_HOUR,
+  business_hours: BUSINESS_HOURS,
+  hourly_contact_counts: Object.fromEntries(BUSINESS_HOURS.map((hour) => [hour, hourlyTotals[hour] || 0])),
+  hourly_contacted_accounts: Object.fromEntries(BUSINESS_HOURS.map((hour) => [hour, hourlyAccountSets[hour]?.size || 0])),
+  contacted_accounts_today: dashboardDeals.filter((deal) => (deal.sf_activity?.contacts_today || 0) > 0).length,
+  contacts_logged_today: dashboardDeals.reduce((sum, deal) => sum + (deal.sf_activity?.contacts_today || 0), 0),
+  contacted_accounts_current_hour: dashboardDeals.filter((deal) => (deal.sf_activity?.contacts_current_hour || 0) > 0).length,
+  contacts_logged_current_hour: dashboardDeals.reduce((sum, deal) => sum + (deal.sf_activity?.contacts_current_hour || 0), 0),
   matched_deals: dashboardDeals.filter((deal) => deal.sf_activity?.matched).length,
   unmatched_deals: dashboardDeals.filter((deal) => !deal.sf_activity?.matched).length,
   contacted_deals: dashboardDeals.filter((deal) => deal.sf_activity?.last_contacted).length,

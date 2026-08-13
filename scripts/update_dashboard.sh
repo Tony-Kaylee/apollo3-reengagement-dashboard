@@ -45,12 +45,12 @@ echo "[$(date -Is)] Starting Viking 1 unlock dashboard update"
     exit 2
   fi
 
-  if git diff --quiet -- index.html; then
+  if git diff --quiet -- index.html data/hourly-contact-history.json; then
     echo "[$(date -Is)] No dashboard changes to publish"
     exit 0
   fi
 
-  git add index.html
+  git add index.html data/hourly-contact-history.json
   git commit -m "Update Viking 1 unlock dashboard"
   git push origin main
 

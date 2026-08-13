@@ -4,6 +4,7 @@ import fs from 'node:fs';
 
 const ORG = process.env.SF_TARGET_ORG || 'revio-salesforce';
 const DASHBOARD_PATH = new URL('../index.html', import.meta.url);
+const HISTORY_PATH = new URL('../data/hourly-contact-history.json', import.meta.url);
 const GENERATED_AT = new Date().toISOString().slice(0, 10);
 const generatedAtDate = new Date(`${GENERATED_AT}T00:00:00Z`);
 const weekStartDate = new Date(generatedAtDate);
@@ -537,4 +538,36 @@ if (!/const SF_ACTIVITY_SUMMARY = /.test(nextHtml)) {
 }
 
 fs.writeFileSync(DASHBOARD_PATH, nextHtml);
+fs.mkdirSync(new URL('../data/', import.meta.url), { recursive: true });
+
+let history = [];
+if (fs.existsSync(HISTORY_PATH)) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(HISTORY_PATH, 'utf8'));
+    history = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    history = [];
+  }
+}
+
+const historyEntry = {
+  generated_at_utc: summary.generated_at_utc,
+  business_timezone: summary.business_timezone,
+  business_date: summary.business_date,
+  current_business_hour: summary.current_business_hour,
+  hourly_contact_counts: summary.hourly_contact_counts,
+  hourly_contacted_accounts: summary.hourly_contacted_accounts,
+  contacted_accounts_today: summary.contacted_accounts_today,
+  contacts_logged_today: summary.contacts_logged_today,
+  contacted_accounts_current_hour: summary.contacted_accounts_current_hour,
+  contacts_logged_current_hour: summary.contacts_logged_current_hour,
+};
+
+history = history.filter((entry) =>
+  !(entry.business_date === historyEntry.business_date && entry.current_business_hour === historyEntry.current_business_hour)
+);
+history.push(historyEntry);
+history.sort((a, b) => (a.generated_at_utc || '').localeCompare(b.generated_at_utc || ''));
+history = history.slice(-450);
+fs.writeFileSync(HISTORY_PATH, `${JSON.stringify(history, null, 2)}\n`);
 console.log(JSON.stringify(summary, null, 2));

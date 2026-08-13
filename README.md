@@ -12,7 +12,8 @@ Refresh behavior:
 - Pulls the latest repo state.
 - Rebuilds Salesforce activity, current PSA opportunities, weekly touches, open opps, and closed-won signals.
 - Rebuilds same-day hourly contact pacing from Salesforce Task/Event records for accounts in the dashboard list.
+- Persists hourly snapshots in `data/hourly-contact-history.json`.
 - Applies the current Viking 1 capability scoring map sourced from the live Products Roadmap and release notes review.
-- Publishes `index.html` back to GitHub Pages when the dashboard changes.
+- Publishes `index.html` and the hourly contact history back to GitHub Pages when the dashboard changes.
 
 The top KPI block includes `Newly Unblocked`, calculated as current fully unblocked accounts minus the Apollo 3 fully-unblocked baseline.

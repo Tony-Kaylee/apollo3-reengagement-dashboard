@@ -10,6 +10,12 @@ const generatedAtDate = new Date(`${GENERATED_AT}T00:00:00Z`);
 const weekStartDate = new Date(generatedAtDate);
 weekStartDate.setUTCDate(generatedAtDate.getUTCDate() - ((generatedAtDate.getUTCDay() + 6) % 7));
 const WEEK_START = weekStartDate.toISOString().slice(0, 10);
+const previousWeekStartDate = new Date(weekStartDate);
+previousWeekStartDate.setUTCDate(weekStartDate.getUTCDate() - 7);
+const PREVIOUS_WEEK_START = previousWeekStartDate.toISOString().slice(0, 10);
+const previousWeekEndDate = new Date(weekStartDate);
+previousWeekEndDate.setUTCDate(weekStartDate.getUTCDate() - 1);
+const PREVIOUS_WEEK_END = previousWeekEndDate.toISOString().slice(0, 10);
 const BUSINESS_TZ = 'America/New_York';
 const BUSINESS_HOURS = Array.from({ length: 10 }, (_, i) => i + 8);
 const PSA_PRODUCT_TYPES = new Set(['PSA', 'PSA 2.0']);
@@ -392,18 +398,27 @@ function pickCurrentOpportunity(accountId, originalOppName) {
   return opportunities.find((opp) => (opp.Name || '').toLowerCase() === normalizedOriginal) || opportunities[0];
 }
 
-function pickNewOpportunityThisWeek(accountId) {
+function pickOpportunityCreatedBetween(accountId, startDate, endDate) {
   const opportunities = (opportunitiesByAccount.get(accountId) || []).filter((opp) => PSA_PRODUCT_TYPES.has(opp.Product_Type__c));
   return opportunities.find((opp) => {
     const createdDate = opp.CreatedDate?.slice(0, 10) || '';
-    return createdDate >= WEEK_START && createdDate <= GENERATED_AT;
+    return createdDate >= startDate && createdDate <= endDate;
   }) || null;
+}
+
+function pickNewOpportunityThisWeek(accountId) {
+  return pickOpportunityCreatedBetween(accountId, WEEK_START, GENERATED_AT);
+}
+
+function pickNewOpportunityPreviousWeek(accountId) {
+  return pickOpportunityCreatedBetween(accountId, PREVIOUS_WEEK_START, PREVIOUS_WEEK_END);
 }
 
 let matchedDeals = 0;
 let contactedDeals = 0;
 let openOppDeals = 0;
 let newOppDealsThisWeek = 0;
+let newOppDealsPreviousWeek = 0;
 let touchedDealsThisWeek = 0;
 
 for (const deal of deals) {
@@ -431,6 +446,7 @@ for (const deal of deals) {
   const lastActivity = activities[0];
   const currentOpportunity = pickCurrentOpportunity(account.Id, deal.opp);
   const newOpportunityThisWeek = pickNewOpportunityThisWeek(account.Id);
+  const newOpportunityPreviousWeek = pickNewOpportunityPreviousWeek(account.Id);
   const taskCount = taskCountByAccount.get(account.Id) || 0;
   const eventCount = eventCountByAccount.get(account.Id) || 0;
   const hourlyContact = hourlyByAccount.get(account.Id) || {
@@ -447,6 +463,7 @@ for (const deal of deals) {
   if (currentOpportunity && !currentOpportunity.IsClosed) openOppDeals += 1;
   if (touchesSince > 0) touchedDealsThisWeek += 1;
   if (newOpportunityThisWeek) newOppDealsThisWeek += 1;
+  if (newOpportunityPreviousWeek) newOppDealsPreviousWeek += 1;
 
   deal.sf_activity = {
     matched: true,
@@ -479,6 +496,10 @@ for (const deal of deals) {
     new_opp_this_week_name: newOpportunityThisWeek?.Name || '',
     new_opp_this_week_stage: newOpportunityThisWeek?.StageName || '',
     new_opp_this_week_created_date: newOpportunityThisWeek?.CreatedDate?.slice(0, 10) || '',
+    has_new_opp_previous_week: Boolean(newOpportunityPreviousWeek),
+    new_opp_previous_week_name: newOpportunityPreviousWeek?.Name || '',
+    new_opp_previous_week_stage: newOpportunityPreviousWeek?.StageName || '',
+    new_opp_previous_week_created_date: newOpportunityPreviousWeek?.CreatedDate?.slice(0, 10) || '',
   };
 }
 
@@ -506,6 +527,8 @@ const summary = {
   generated_at: GENERATED_AT,
   generated_at_utc: new Date().toISOString(),
   week_start: WEEK_START,
+  previous_week_start: PREVIOUS_WEEK_START,
+  previous_week_end: PREVIOUS_WEEK_END,
   business_timezone: BUSINESS_TZ,
   business_date: BUSINESS_DATE,
   current_business_hour: CURRENT_BUSINESS_HOUR,
@@ -521,6 +544,7 @@ const summary = {
   contacted_deals: dashboardDeals.filter((deal) => deal.sf_activity?.last_contacted).length,
   touched_deals_this_week: dashboardDeals.filter((deal) => (deal.sf_activity?.touches_this_week || 0) > 0).length,
   new_opp_deals_this_week: dashboardDeals.filter((deal) => deal.sf_activity?.has_new_opp_this_week).length,
+  new_opp_deals_previous_week: dashboardDeals.filter((deal) => deal.sf_activity?.has_new_opp_previous_week).length,
   open_opp_deals: openOpportunityIds.size,
   account_matches: dashboardAccountIds.size,
   apollo3_fully_unblocked_baseline: APOLLO3_FULLY_UNBLOCKED_BASELINE,

@@ -442,6 +442,10 @@ for (const deal of deals) {
   }
 
   matchedDeals += 1;
+  // The dashboard's primary Owner column should reflect the current Salesforce
+  // Account owner. The original lost-deal export can contain stale reps for
+  // re-opened accounts/opportunities.
+  deal.owner = account.Owner?.Name || deal.owner || '';
   const activities = activitiesByAccount.get(account.Id) || [];
   const lastActivity = activities[0];
   const currentOpportunity = pickCurrentOpportunity(account.Id, deal.opp);

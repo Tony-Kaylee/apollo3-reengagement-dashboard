@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Computer Diagnostic Checklist POC</title>
+<style>
+  :root{--navy:#102a43;--blue:#2563eb;--bg:#f6f8fc;--card:#fff;--line:#d0d5dd;--muted:#667085;--ok:#12b76a;--warn:#f79009;--bad:#d92d20}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);font-family:Arial,Helvetica,sans-serif;color:#1f2937}
+  .wrap{max-width:920px;margin:28px auto;padding:0 18px}.top{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:16px}
+  h1{margin:0;color:var(--navy);font-size:28px;letter-spacing:-.02em}.sub{color:var(--muted);font-size:13px;margin-top:5px}
+  .pill{background:#eaf2ff;color:var(--blue);border:1px solid #c7d7fe;padding:8px 12px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin:14px 0;box-shadow:0 6px 20px rgba(16,42,67,.06)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:720px){.grid{grid-template-columns:1fr}.top{display:block}.pill{display:inline-block;margin-top:10px}}
+  h2{font-size:16px;color:var(--navy);margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid #e4e7ec}.item{display:flex;align-items:flex-start;gap:10px;padding:8px 4px;border-radius:8px}.item:hover{background:#f9fafb}
+  input[type=checkbox]{width:18px;height:18px;margin-top:0;accent-color:var(--blue)} label{font-size:14px;line-height:1.25;cursor:pointer}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  button{border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer} .primary{background:var(--blue);color:#fff}.secondary{background:#eef2f7;color:#344054}.danger{background:#fff1f3;color:#b42318;border:1px solid #fecdd6}
+  .status{font-size:12px;color:var(--muted);margin-top:10px}.ok{color:var(--ok);font-weight:700}.warn{color:var(--warn);font-weight:700}.bad{color:var(--bad);font-weight:700}
+  textarea,input[type=text]{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;font:14px Arial;background:#fff} textarea{min-height:95px;resize:vertical}.meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}.small{font-size:11px;color:var(--muted);line-height:1.35}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div><h1>Computer Diagnostic Checklist</h1><div class="sub">HTML checklist proof-of-concept — edits auto-save in the browser if scripts/storage are allowed.</div></div>
+    <div class="pill" id="saveState">Not saved yet</div>
+  </div>
+
+  <div class="card">
+    <div class="meta">
+      <div><label><b>Technician</b></label><input id="technician" type="text" placeholder="Name" /></div>
+      <div><label><b>Ticket / Device</b></label><input id="ticket" type="text" placeholder="Required for save key, e.g. ticket 12345" /></div>
+    </div>
+    <div class="small" id="storageStatus">Checking whether this attachment can run JavaScript and save state…</div><div class="small"><b>Important:</b> enter a stable Ticket / Device value first. This v2 saves by that value instead of the changing blob URL.</div>
+  </div>
+
+  <div class="grid">
+    <section class="card"><h2>Initial Triage</h2><div id="triage"></div></section>
+    <section class="card"><h2>Hardware Checks</h2><div id="hardware"></div></section>
+    <section class="card"><h2>Software & Performance</h2><div id="software"></div></section>
+    <section class="card"><h2>Network & Security</h2><div id="network"></div></section>
+  </div>
+
+  <section class="card">
+    <h2>Notes</h2>
+    <textarea id="notes" placeholder="Optional technician notes…"></textarea>
+    <div class="actions">
+      <button class="primary" onclick="saveNow()">Save Checklist</button>
+      <button class="secondary" onclick="downloadCopy()">Download Saved HTML Copy</button>
+      <button class="danger" onclick="clearSaved()">Clear Saved State</button>
+    </div>
+    <div class="status" id="statusLine">If this survives closing/reopening the attachment, the no-product-change HTML path may be viable.</div>
+  </section>
+</div>
+
+<script>
+const groups = {
+  triage:['Customer-reported issue documented','Power / battery / charging verified','Boot sequence observed','Error messages captured','Recent changes or updates noted','Warranty / service eligibility checked'],
+  hardware:['External damage inspected','Keyboard / mouse / trackpad tested','Display / external monitor tested','Ports and cables checked','Printer/peripheral connectivity tested','Overheating / fan noise checked'],
+  software:['Operating system version confirmed','Disk space reviewed','Startup apps/services reviewed','Performance symptoms reproduced','Application errors checked','Available updates reviewed'],
+  network:['Wi-Fi / Ethernet connectivity tested','DNS / gateway reachability checked','VPN access tested if applicable','Antivirus / EDR status reviewed','Malware indicators checked','Backup status verified']
+};
+function currentKey(){ const id=(el('ticket')?.value||'').trim(); return 'revio-html-checklist-poc:v2:' + (id || 'unspecified-ticket'); }
+function el(id){return document.getElementById(id)}
+function render(){
+  Object.entries(groups).forEach(([g,items])=>{
+    el(g).innerHTML = items.map((txt,i)=>`<div class="item"><input type="checkbox" id="${g}_${i}"><label for="${g}_${i}">${txt}</label></div>`).join('');
+  });
+  document.querySelectorAll('input,textarea').forEach(x=>x.addEventListener('input', autoSave)); el('ticket').addEventListener('change', load);
+}
+function collect(){
+  const data={technician:el('technician').value,ticket:el('ticket').value,notes:el('notes').value,checks:{},savedAt:new Date().toISOString(),url:location.href};
+  Object.keys(groups).forEach(g=>data.checks[g]=groups[g].map((_,i)=>el(`${g}_${i}`).checked));
+  return data;
+}
+function apply(data){
+  if(!data) return;
+  el('technician').value=data.technician||''; el('ticket').value=data.ticket||''; el('notes').value=data.notes||'';
+  Object.keys(groups).forEach(g=>(data.checks?.[g]||[]).forEach((v,i)=>{const box=el(`${g}_${i}`); if(box) box.checked=!!v;}));
+  if(data.savedAt) el('saveState').textContent='Loaded saved state';
+}
+function storageWorks(){try{localStorage.setItem('__poc_test','1');localStorage.removeItem('__poc_test');return true}catch(e){return false}}
+function saveNow(){
+  const data=collect();
+  try{localStorage.setItem(currentKey(), JSON.stringify(data)); el('saveState').textContent='Saved ' + new Date().toLocaleTimeString(); el('statusLine').innerHTML='<span class="ok">Saved to browser storage.</span> Close/reopen this exact attachment to test persistence.'; return true;}
+  catch(e){el('statusLine').innerHTML='<span class="bad">Storage blocked:</span> '+e.message; return false;}
+}
+let t; function autoSave(){clearTimeout(t); t=setTimeout(saveNow,250)}
+function load(){try{apply(JSON.parse(localStorage.getItem(currentKey())||'null'))}catch(e){}}
+function clearSaved(){try{localStorage.removeItem(currentKey())}catch(e){} location.reload()}
+function downloadCopy(){
+  saveNow();
+  const data = collect();
+  const html = document.documentElement.outerHTML.replace('</body>', `<script>window.__CHECKLIST_PREFILL__=${JSON.stringify(data).replace(/</g,'\\u003c')};<\/script></body>`);
+  const blob = new Blob(['<!doctype html>\n'+html], {type:'text/html'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='saved-diagnostic-checklist.html'; a.click(); URL.revokeObjectURL(a.href);
+}
+render();
+if(window.__CHECKLIST_PREFILL__) apply(window.__CHECKLIST_PREFILL__); else load();
+el('storageStatus').innerHTML = storageWorks() ? '<span class="ok">JavaScript is running and browser storage is available.</span> This v2 can auto-save by Ticket / Device value on this device/browser.' : '<span class="warn">JavaScript is running, but browser storage is blocked.</span> Use Download Saved HTML Copy as fallback.';
+saveNow();
+</script>
+</body>
+</html>

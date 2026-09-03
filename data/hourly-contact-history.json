@@ -5064,5 +5064,39 @@
     "contacts_logged_today": 15,
     "contacted_accounts_current_hour": 1,
     "contacts_logged_current_hour": 2
+  },
+  {
+    "generated_at_utc": "2026-09-03T18:02:10.675Z",
+    "business_timezone": "America/New_York",
+    "business_date": "2026-09-03",
+    "current_business_hour": 14,
+    "hourly_contact_counts": {
+      "8": 3,
+      "9": 2,
+      "10": 4,
+      "11": 2,
+      "12": 2,
+      "13": 5,
+      "14": 0,
+      "15": 0,
+      "16": 0,
+      "17": 0
+    },
+    "hourly_contacted_accounts": {
+      "8": 2,
+      "9": 2,
+      "10": 3,
+      "11": 2,
+      "12": 1,
+      "13": 2,
+      "14": 0,
+      "15": 0,
+      "16": 0,
+      "17": 0
+    },
+    "contacted_accounts_today": 10,
+    "contacts_logged_today": 18,
+    "contacted_accounts_current_hour": 0,
+    "contacts_logged_current_hour": 0
   }
 ]
